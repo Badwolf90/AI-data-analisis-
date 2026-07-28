@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 from app.api.endpoints import (
-    auth, users, projects, datasets, automl, xai, predictions, reports, audit_logs, copilot, workspaces, mlops
+    auth, users, projects, datasets, automl, xai, predictions, reports, audit_logs, copilot, workspaces, mlops, telemetry
 )
 
 api_router = APIRouter()
@@ -17,5 +17,7 @@ api_router.include_router(reports.router, prefix="/reports", tags=["Report Gener
 api_router.include_router(audit_logs.router, prefix="/audit-logs", tags=["Audit Logs"])
 api_router.include_router(copilot.router, prefix="/copilot", tags=["AI Copilot Chat"])
 api_router.include_router(mlops.router, prefix="/mlops", tags=["MLOps & Drift Monitoring"])
+api_router.include_router(telemetry.router, prefix="/telemetry", tags=["Grafana-Style Realtime Telemetry"])
+
 
 
