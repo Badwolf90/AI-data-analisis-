@@ -296,3 +296,8 @@ class ProductionPipeline:
             "sample_count": len(new_data),
             "pipeline_version": bundle.get("version", "v1.0.0")
         }
+
+
+# Backward compatibility alias
+MachineLearningPipeline = ProductionPipeline
+
