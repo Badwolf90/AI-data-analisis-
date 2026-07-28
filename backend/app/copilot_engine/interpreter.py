@@ -123,3 +123,17 @@ Berikut adalah panduan membaca **{chart_type}** bertajuk **"{chart_title}"**:
 Grafik ini membantu kita mendeteksi apakah sebaran data Anda berdistribusi normal, memiliki kemiringan (*skewness*), atau terdapat pola anomali tertentu yang memerlukan penanganan khusus saat pembersihan data.
 """
         return explanation.strip()
+
+    @staticmethod
+    def explain_xai_suite(xai_report: Dict[str, Any], lang: str = "both") -> str:
+        bilingual = xai_report.get("bilingual_ai_explanations", {})
+        id_text = bilingual.get("indonesian_id", "")
+        en_text = bilingual.get("english_en", "")
+
+        if lang == "id":
+            return id_text
+        elif lang == "en":
+            return en_text
+        else:
+            return f"{id_text}\n\n---\n\n{en_text}"
+
