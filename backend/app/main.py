@@ -6,6 +6,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.config import settings
 from app.core.database import engine, Base
+import app.models  # Register all SQLAlchemy models in Base.metadata
 from app.core.logging import logger
 from app.core.rate_limiter import RateLimiterMiddleware
 from app.api.router import api_router
@@ -13,6 +14,7 @@ from app.api.router import api_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+
     logger.info("Initializing Database Tables...")
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
