@@ -58,7 +58,8 @@ Answer the user's question directly, accurately, and thoroughly in clear Indones
                     ],
                     "temperature": 0.3
                 }
-                resp = requests.post(f"{settings.NINEROUTER_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=5)
+                resp = requests.post(f"{settings.NINEROUTER_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=1.5)
+
                 if resp.status_code == 200:
                     ai_answer = resp.json()["choices"][0]["message"]["content"]
                     return {
