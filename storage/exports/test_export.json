@@ -1,0 +1,12 @@
+[
+  {
+    "id":1,
+    "model":"RandomForest",
+    "accuracy":0.95
+  },
+  {
+    "id":2,
+    "model":"XGBoost",
+    "accuracy":0.94
+  }
+]
