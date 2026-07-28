@@ -169,6 +169,12 @@ class TeamRepository(BaseRepository[Team]):
         return result.scalars().all()
 
 
+class TeamMemberRepository(BaseRepository[TeamMember]):
+    def __init__(self, db: AsyncSession):
+        super().__init__(TeamMember, db)
+
+
+
 class InviteRepository(BaseRepository[Invite]):
     def __init__(self, db: AsyncSession):
         super().__init__(Invite, db)
