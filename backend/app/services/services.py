@@ -565,12 +565,17 @@ class WorkspaceService:
                 detail="Invalid, expired, or already accepted invitation code."
             )
 
-        if invite.expires_at < datetime.now(timezone.utc):
+        expires_at = invite.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+        if expires_at < datetime.now(timezone.utc):
             await self.invite_repo.update(invite, {"status": InviteStatus.EXPIRED})
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invitation code has expired."
             )
+
 
         # Check if already a member
         existing_member = await self.member_repo.get_member(invite.workspace_id, user_id)
