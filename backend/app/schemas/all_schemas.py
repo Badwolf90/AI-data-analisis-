@@ -150,7 +150,24 @@ class DatasetResponse(BaseModel):
         from_attributes = True
 
 
+class DatasetReviewRequest(BaseModel):
+    target_column: Optional[str] = None
+
+
+class DatasetReviewResponse(BaseModel):
+    summary: Dict[str, Any]
+    missing_values: Dict[str, Any]
+    duplicates: Dict[str, Any]
+    target_validation: Dict[str, Any]
+    data_leakage: Dict[str, Any]
+    outliers: Dict[str, Any]
+    class_imbalance: Dict[str, Any]
+    correlation_analysis: Dict[str, Any]
+    ai_senior_ds_recommendation: Dict[str, Any]
+
+
 class PreprocessConfigRequest(BaseModel):
+
     dataset_id: str
     impute_missing: Optional[bool] = True
     scaling_method: Optional[str] = "standard"  # minmax, standard, none
