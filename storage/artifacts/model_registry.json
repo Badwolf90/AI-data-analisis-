@@ -4,7 +4,7 @@
       "versions": [
         {
           "version": "v1785225384",
-          "stage": "Production",
+          "stage": "Archived",
           "artifact_path": "./models_registry\\exp_retrain_test_best_pipeline_v1785225384.joblib",
           "metrics": {
             "score": 0.6
@@ -14,6 +14,19 @@
           },
           "git_commit_hash": "0e5b33c",
           "registered_at": "2026-07-28T07:58:05.564281+00:00"
+        },
+        {
+          "version": "v1785226088",
+          "stage": "Production",
+          "artifact_path": "./models_registry\\exp_retrain_test_best_pipeline_v1785226088.joblib",
+          "metrics": {
+            "score": 0.65
+          },
+          "parameters": {
+            "best_algorithm": "KNN"
+          },
+          "git_commit_hash": "03bc83a",
+          "registered_at": "2026-07-28T08:09:37.536336+00:00"
         }
       ]
     }
