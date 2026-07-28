@@ -22,6 +22,81 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str
+
+
+# --- Multi-Tenant Workspace & Team Schemas ---
+class WorkspaceCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+
+
+class WorkspaceResponse(BaseModel):
+    id: str
+    name: str
+    slug: str
+    owner_id: str
+    description: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class TeamCreate(BaseModel):
+    workspace_id: str
+    name: str
+    description: Optional[str] = None
+
+
+class TeamResponse(BaseModel):
+    id: str
+    workspace_id: str
+    name: str
+    description: Optional[str] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class InviteMemberRequest(BaseModel):
+    workspace_id: str
+    email: EmailStr
+    role: str = "MEMBER"  # OWNER, ADMIN, MEMBER, VIEWER
+
+
+class AcceptInviteRequest(BaseModel):
+    invite_code: str
+
+
+class InviteResponse(BaseModel):
+    id: str
+    workspace_id: str
+    email: EmailStr
+    role: str
+    invite_code: str
+    status: str
+    expires_at: datetime
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class WorkspaceMemberResponse(BaseModel):
+    id: str
+    workspace_id: str
+    user_id: str
+    role: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+
 # --- User Schemas ---
 class UserResponse(BaseModel):
     id: str

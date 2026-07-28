@@ -103,3 +103,88 @@ class AuditRepository(BaseRepository[AuditLog]):
             select(AuditLog).order_by(AuditLog.created_at.desc()).limit(limit)
         )
         return result.scalars().all()
+
+
+from app.models import (
+    UserSession, Workspace, WorkspaceMember, Team, TeamMember, Invite
+)
+
+
+class UserSessionRepository(BaseRepository[UserSession]):
+    def __init__(self, db: AsyncSession):
+        super().__init__(UserSession, db)
+
+    async def get_by_token(self, refresh_token: str) -> Optional[UserSession]:
+        result = await self.db.execute(
+            select(UserSession).where(UserSession.refresh_token == refresh_token, UserSession.is_revoked == False)
+        )
+        return result.scalars().first()
+
+
+class WorkspaceRepository(BaseRepository[Workspace]):
+    def __init__(self, db: AsyncSession):
+        super().__init__(Workspace, db)
+
+    async def get_by_slug(self, slug: str) -> Optional[Workspace]:
+        result = await self.db.execute(select(Workspace).where(Workspace.slug == slug))
+        return result.scalars().first()
+
+    async def get_user_workspaces(self, user_id: str) -> List[Workspace]:
+        result = await self.db.execute(
+            select(Workspace)
+            .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
+            .where(WorkspaceMember.user_id == user_id)
+        )
+        return result.scalars().all()
+
+
+class WorkspaceMemberRepository(BaseRepository[WorkspaceMember]):
+    def __init__(self, db: AsyncSession):
+        super().__init__(WorkspaceMember, db)
+
+    async def get_member(self, workspace_id: str, user_id: str) -> Optional[WorkspaceMember]:
+        result = await self.db.execute(
+            select(WorkspaceMember).where(
+                WorkspaceMember.workspace_id == workspace_id,
+                WorkspaceMember.user_id == user_id
+            )
+        )
+        return result.scalars().first()
+
+    async def list_members(self, workspace_id: str) -> List[WorkspaceMember]:
+        result = await self.db.execute(
+            select(WorkspaceMember).where(WorkspaceMember.workspace_id == workspace_id)
+        )
+        return result.scalars().all()
+
+
+class TeamRepository(BaseRepository[Team]):
+    def __init__(self, db: AsyncSession):
+        super().__init__(Team, db)
+
+    async def get_by_workspace(self, workspace_id: str) -> List[Team]:
+        result = await self.db.execute(
+            select(Team).where(Team.workspace_id == workspace_id)
+        )
+        return result.scalars().all()
+
+
+class InviteRepository(BaseRepository[Invite]):
+    def __init__(self, db: AsyncSession):
+        super().__init__(Invite, db)
+
+    async def get_by_code(self, code: str) -> Optional[Invite]:
+        result = await self.db.execute(
+            select(Invite).where(Invite.invite_code == code)
+        )
+        return result.scalars().first()
+
+    async def get_pending_by_workspace(self, workspace_id: str) -> List[Invite]:
+        result = await self.db.execute(
+            select(Invite).where(
+                Invite.workspace_id == workspace_id,
+                Invite.status == "PENDING"
+            )
+        )
+        return result.scalars().all()
+
