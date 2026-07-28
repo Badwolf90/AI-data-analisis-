@@ -1,0 +1,23 @@
+artifact_path: file:///D:/SEMESTER 6/MEACHINE LEARNING/TUGAS UNTUK GABUT/mlruns/1/models/m-dc9b8510c6ee49d185f08bfbdf157da3/artifacts
+flavors:
+  python_function:
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.sklearn
+    model_path: model.skops
+    predict_fn: predict
+    python_version: 3.11.15
+  sklearn:
+    code: null
+    pickled_model: model.skops
+    serialization_format: skops
+    sklearn_version: 1.9.0
+    skops_trusted_types: null
+mlflow_version: 3.14.0
+model_id: m-dc9b8510c6ee49d185f08bfbdf157da3
+model_size_bytes: 9058
+model_uuid: m-dc9b8510c6ee49d185f08bfbdf157da3
+prompts: null
+run_id: 316f5ad3a8e843c6aca611751fa1f49f
+utc_time_created: '2026-07-28 07:57:30.481805'
