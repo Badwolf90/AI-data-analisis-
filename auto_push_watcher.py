@@ -2,6 +2,11 @@ import subprocess
 import time
 import datetime
 import os
+import sys
+
+# Configure UTF-8 output for Windows console compatibility
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 CHECK_INTERVAL = 10  # Cek setiap 10 detik
@@ -32,13 +37,13 @@ def check_and_push():
         
         push_res = run_git_command(["push", "origin", "main"])
         if push_res is not None:
-            print(f"[{now}] ✅ Berhasil di-push ke GitHub!")
+            print(f"[{now}] [SUCCESS] Berhasil di-push ke GitHub!")
         else:
-            print(f"[{now}] ⚠️ Push gagal (Pastikan remote origin GitHub sudah terpasang).")
+            print(f"[{now}] [WARNING] Push gagal (Pastikan remote origin GitHub sudah terpasang).")
 
 if __name__ == "__main__":
     print(f"==================================================")
-    print(f"🚀 Auto Push GitHub Daemon Aktif (Cek tiap {CHECK_INTERVAL}s)")
+    print(f"Auto Push GitHub Daemon Aktif (Cek tiap {CHECK_INTERVAL}s)")
     print(f"Folder Project: {PROJECT_DIR}")
     print(f"==================================================")
     while True:
@@ -47,3 +52,4 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Error: {e}")
         time.sleep(CHECK_INTERVAL)
+
