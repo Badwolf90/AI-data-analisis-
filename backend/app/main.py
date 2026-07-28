@@ -54,6 +54,26 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+import time
+from sqlalchemy import text
+from app.services.telemetry_service import TelemetryService
+
+
+@app.middleware("http")
+async def telemetry_latency_middleware(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration_ms = (time.time() - start_time) * 1000.0
+
+    is_pred = "/predictions" in request.url.path
+    TelemetryService.record_api_request(
+        latency_ms=duration_ms,
+        status_code=response.status_code,
+        is_prediction=is_pred
+    )
+    return response
+
+
 @app.get("/", tags=["Health Check"])
 async def root():
     return {
@@ -61,6 +81,30 @@ async def root():
         "app": settings.PROJECT_NAME,
         "docs": "/docs"
     }
+
+
+@app.get("/health", tags=["Health Check"])
+async def health_check():
+    """Liveness Probe for Kubernetes / Docker / Nginx."""
+    return {"status": "HEALTHY", "service": settings.PROJECT_NAME}
+
+
+@app.get("/ready", tags=["Health Check"])
+async def readiness_check():
+    """Readiness Probe: Validates Database connection & System health."""
+    db_ok = False
+    try:
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+            db_ok = True
+    except Exception as e:
+        logger.error(f"Readiness check failed on DB: {e}")
+
+    if not db_ok:
+        return JSONResponse(status_code=503, content={"status": "UNREADY", "database": "DISCONNECTED"})
+
+    return {"status": "READY", "database": "CONNECTED", "service": settings.PROJECT_NAME}
+
 
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
