@@ -258,11 +258,29 @@ class UserSession(Base):
     user = relationship("User", back_populates="sessions")
 
 
+# 11. Notifications Table
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    message = Column(String(1000), nullable=False)
+    type = Column(SQLEnum(NotificationType), default=NotificationType.INFO, nullable=False)
+    is_read = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), default=current_utc, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=current_utc, onupdate=current_utc, nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User", back_populates="notifications")
+
+
 class WorkspaceRole(str, enum.Enum):
     OWNER = "OWNER"
     ADMIN = "ADMIN"
     MEMBER = "MEMBER"
     VIEWER = "VIEWER"
+
 
 
 class TeamRole(str, enum.Enum):
