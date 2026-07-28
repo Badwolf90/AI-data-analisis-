@@ -20,7 +20,13 @@ class Settings(BaseSettings):
     RATE_LIMIT_PER_MINUTE: int = 100
     ALLOWED_HOSTS: List[str] = ["*"]
 
+    # 9Router AI Gateway Configuration
+    NINEROUTER_BASE_URL: str = "http://localhost:20128/v1"
+    NINEROUTER_MODEL: str = "ag/gemini-3.5-flash-low"
+    NINEROUTER_ENABLED: bool = True
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
 
 
 settings = Settings()
