@@ -5,5 +5,7 @@ from app.services.services import (
     AutoMLService,
     XAIService,
     PredictionService,
-    ReportService
+    ReportService,
+    WorkspaceService
 )
+
