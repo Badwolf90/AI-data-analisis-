@@ -1,0 +1,37 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-zinc-900/80 backdrop-blur-md border border-zinc-800/80 shadow-xl;
+  }
+  .glass-input {
+    @apply bg-zinc-950/60 border border-zinc-800 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all rounded-lg text-zinc-100 placeholder-zinc-500;
+  }
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 via-blue-500 to-violet-500;
+  }
+  .gradient-border {
+    @apply relative before:absolute before:inset-0 before:p-[1px] before:bg-gradient-to-r before:from-cyan-500 before:to-violet-500 before:rounded-xl before:-z-10;
+  }
+}
+
+/* Custom scrollbar for Linear/Vercel aesthetic */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #09090b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
