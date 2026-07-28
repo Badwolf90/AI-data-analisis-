@@ -8,4 +8,11 @@ from app.repositories.all_repositories import (
     PredictionRepository,
     ReportRepository,
     AuditRepository,
+    UserSessionRepository,
+    WorkspaceRepository,
+    WorkspaceMemberRepository,
+    TeamRepository,
+    TeamMemberRepository,
+    InviteRepository,
 )
+
