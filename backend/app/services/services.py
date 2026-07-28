@@ -4,7 +4,7 @@ import joblib
 import pandas as pd
 import numpy as np
 from typing import Optional, List, Dict, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from fastapi import HTTPException, status, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,16 +12,20 @@ from app.core.config import settings
 from app.core.security import get_password_hash, verify_password, create_access_token, create_refresh_token
 from app.core.logging import logger
 
-from app.models import ProblemType, ExperimentStatus
+from app.models import ProblemType, ExperimentStatus, WorkspaceRole, TeamRole, InviteStatus
 from app.repositories import (
     UserRepository, ProjectRepository, DatasetRepository,
     ExperimentRepository, ModelRepository, PredictionRepository,
-    ReportRepository, AuditRepository
+    ReportRepository, AuditRepository, UserSessionRepository,
+    WorkspaceRepository, WorkspaceMemberRepository, TeamRepository,
+    TeamMemberRepository, InviteRepository
 )
 from app.schemas import (
     RegisterRequest, LoginRequest, TokenResponse, ProjectCreate, PreprocessConfigRequest,
-    AutoMLStartRequest, LIMESampleRequest, PredictRequest, ReportGenerateRequest
+    AutoMLStartRequest, LIMESampleRequest, PredictRequest, ReportGenerateRequest,
+    WorkspaceCreate, TeamCreate, InviteMemberRequest, AcceptInviteRequest, RefreshTokenRequest
 )
+
 
 # ML Libraries
 from sklearn.model_selection import train_test_split
@@ -80,6 +84,15 @@ class AuthService:
         access_token = create_access_token(user.id)
         refresh_token = create_refresh_token(user.id)
 
+        # Store Refresh Token Session for revocation and security auditing
+        session_repo = UserSessionRepository(self.user_repo.db)
+        await session_repo.create({
+            "user_id": user.id,
+            "refresh_token": refresh_token,
+            "ip_address": ip_address,
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        })
+
         await self.audit_repo.create({
             "user_id": user.id,
             "action": "USER_LOGIN",
@@ -93,6 +106,45 @@ class AuthService:
             refresh_token=refresh_token,
             token_type="bearer"
         )
+
+    async def refresh_token(self, refresh_token_str: str, ip_address: str = None) -> TokenResponse:
+        from app.core.security import decode_token
+        payload = decode_token(refresh_token_str)
+        if not payload or payload.get("type") != "refresh":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token."
+            )
+
+        user_id = payload.get("sub")
+        session_repo = UserSessionRepository(self.user_repo.db)
+        session = await session_repo.get_by_token(refresh_token_str)
+
+        if not session or session.user_id != user_id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token session revoked or invalid."
+            )
+
+        # Token Rotation: Revoke old session and issue new pair
+        await session_repo.update(session, {"is_revoked": True})
+
+        new_access_token = create_access_token(user_id)
+        new_refresh_token = create_refresh_token(user_id)
+
+        await session_repo.create({
+            "user_id": user_id,
+            "refresh_token": new_refresh_token,
+            "ip_address": ip_address,
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+        })
+
+        return TokenResponse(
+            access_token=new_access_token,
+            refresh_token=new_refresh_token,
+            token_type="bearer"
+        )
+
 
 
 class ProjectService:
@@ -429,3 +481,115 @@ class ReportService:
             "file_path": report_path,
             "content_json": report_content
         })
+
+
+import secrets
+
+
+class WorkspaceService:
+    """
+    Enterprise Multi-Tenant Workspace & Team Service.
+    Handles multi-tenant resource isolation, workspace membership, teams,
+    role-based access control (RBAC), and email/code member invitations.
+    """
+    def __init__(self, db: AsyncSession):
+        self.db = db
+        self.workspace_repo = WorkspaceRepository(db)
+        self.member_repo = WorkspaceMemberRepository(db)
+        self.team_repo = TeamRepository(db)
+        self.invite_repo = InviteRepository(db)
+        self.user_repo = UserRepository(db)
+
+    async def create_workspace(self, user_id: str, req: WorkspaceCreate):
+        slug = req.name.lower().replace(" ", "-") + "-" + secrets.token_hex(3)
+        workspace = await self.workspace_repo.create({
+            "name": req.name,
+            "slug": slug,
+            "owner_id": user_id,
+            "description": req.description
+        })
+
+        # Add creator as Workspace OWNER
+        await self.member_repo.create({
+            "workspace_id": workspace.id,
+            "user_id": user_id,
+            "role": WorkspaceRole.OWNER
+        })
+
+        return workspace
+
+    async def list_user_workspaces(self, user_id: str):
+        return await self.workspace_repo.get_user_workspaces(user_id)
+
+    async def create_team(self, user_id: str, req: TeamCreate):
+        # Verify workspace membership & permission
+        member = await self.member_repo.get_member(req.workspace_id, user_id)
+        if not member or member.role not in [WorkspaceRole.OWNER, WorkspaceRole.ADMIN]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions to create team in this workspace."
+            )
+
+        return await self.team_repo.create({
+            "workspace_id": req.workspace_id,
+            "name": req.name,
+            "description": req.description
+        })
+
+    async def invite_member(self, invited_by_id: str, req: InviteMemberRequest):
+        member = await self.member_repo.get_member(req.workspace_id, invited_by_id)
+        if not member or member.role not in [WorkspaceRole.OWNER, WorkspaceRole.ADMIN]:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only workspace Owners or Admins can invite new members."
+            )
+
+        invite_code = secrets.token_urlsafe(16)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+
+        return await self.invite_repo.create({
+            "workspace_id": req.workspace_id,
+            "email": req.email,
+            "role": req.role,
+            "invite_code": invite_code,
+            "invited_by_id": invited_by_id,
+            "status": InviteStatus.PENDING,
+            "expires_at": expires_at
+        })
+
+    async def accept_invite(self, user_id: str, req: AcceptInviteRequest):
+        invite = await self.invite_repo.get_by_code(req.invite_code)
+        if not invite or invite.status != InviteStatus.PENDING:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid, expired, or already accepted invitation code."
+            )
+
+        if invite.expires_at < datetime.now(timezone.utc):
+            await self.invite_repo.update(invite, {"status": InviteStatus.EXPIRED})
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invitation code has expired."
+            )
+
+        # Check if already a member
+        existing_member = await self.member_repo.get_member(invite.workspace_id, user_id)
+        if not existing_member:
+            await self.member_repo.create({
+                "workspace_id": invite.workspace_id,
+                "user_id": user_id,
+                "role": invite.role
+            })
+
+        await self.invite_repo.update(invite, {"status": InviteStatus.ACCEPTED})
+        return {"message": "Successfully joined workspace.", "workspace_id": invite.workspace_id}
+
+    async def list_workspace_members(self, workspace_id: str, user_id: str):
+        member = await self.member_repo.get_member(workspace_id, user_id)
+        if not member:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You are not a member of this workspace."
+            )
+        return await self.member_repo.list_members(workspace_id)
+
