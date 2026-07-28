@@ -378,10 +378,13 @@ Provide expert Senior Data Scientist recommendations in structured JSON format w
             pairs = [f"{p['feature_1']} & {p['feature_2']}" for p in multicollinearity]
             blueprint_steps.append(f"High collinearity detected between {pairs}. Apply VIF filtering or PCA dimensionality reduction.")
 
+        readiness_msg = "Dataset is production-ready after recommended preprocessing." if quality_score >= 80 else "Dataset requires preprocessing remediation before AutoML model training."
+
         return {
             "source": "Senior Data Scientist Audit Engine",
-            "executive_summary": f"Dataset audited with Quality Score of {quality_score}/100 ({grade}). {"Dataset is production-ready after recommended preprocessing." if quality_score >= 80 else "Dataset requires preprocessing remediation before AutoML model training."}",
+            "executive_summary": f"Dataset audited with Quality Score of {quality_score}/100 ({grade}). {readiness_msg}",
             "critical_risks": critical_risks if critical_risks else ["No critical data hygiene risks detected."],
             "preprocessing_blueprint": blueprint_steps if blueprint_steps else ["Dataset is clean. Direct standard scaling and encoding recommended."],
             "recommended_algorithms": algo_suggestions
         }
+
