@@ -1,4 +1,4 @@
-name: CI/CD Production Pipeline
+name: Enterprise CI/CD Production Pipeline
 
 on:
   push:
@@ -7,7 +7,8 @@ on:
     branches: [ "main" ]
 
 jobs:
-  lint-and-test:
+  test-suite:
+    name: 🧪 Automated Pytest & Quality Assurance
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -18,19 +19,20 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Backend Dependencies
+      - name: Install Dependencies
         run: |
           cd backend
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Backend Syntax Verification
+      - name: Run Backend Pytest Suite
         run: |
           cd backend
-          python -m py_compile app/main.py app/automl_engine/engine.py
+          PYTHONPATH=. python -m pytest tests
 
-  build-and-push:
-    needs: lint-and-test
+  docker-build-and-push:
+    name: 🐳 Docker Multi-Stage Build & Registry Push
+    needs: test-suite
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
@@ -59,8 +61,9 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository }}/frontend:latest
 
-  deploy-vps:
-    needs: build-and-push
+  production-deployment:
+    name: 🚀 Zero-Downtime Deployment to VPS
+    needs: docker-build-and-push
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     steps:
@@ -75,3 +78,4 @@ jobs:
             git pull origin main
             docker compose pull
             docker compose up -d --remove-orphans
+            docker compose exec -T backend curl -f http://localhost:8000/health
