@@ -83,6 +83,12 @@ Answer the user's question directly, accurately, and thoroughly in clear Indones
             "suggested_questions": AIDataScientistEngine._get_suggested_questions()
         }
 
+    # Backward compatibility method alias
+    @staticmethod
+    def ask_copilot(prompt: str, context: Optional[Dict[str, Any]] = None, dataset_path: Optional[str] = None) -> Dict[str, Any]:
+        return AIDataScientistEngine.ask_ai_data_scientist(prompt=prompt, context=context, dataset_path=dataset_path)
+
+
     @staticmethod
     def _extract_dataset_insights(context: Dict[str, Any], dataset_path: Optional[str]) -> Dict[str, Any]:
         """Reads and calculates real dataset metrics from pandas DataFrame or context."""
