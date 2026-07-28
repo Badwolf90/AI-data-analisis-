@@ -78,6 +78,7 @@ class Project(Base):
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
     user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True)
     name = Column(String(255), nullable=False)
     description = Column(String(512), nullable=True)
     created_at = Column(DateTime(timezone=True), default=current_utc, nullable=False)
@@ -85,7 +86,9 @@ class Project(Base):
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     owner = relationship("User", back_populates="projects")
+    workspace = relationship("Workspace", back_populates="projects")
     datasets = relationship("Dataset", back_populates="project", cascade="all, delete-orphan")
+
 
     __table_args__ = (
         Index("idx_projects_user_deleted", "user_id", "deleted_at"),
@@ -255,18 +258,111 @@ class UserSession(Base):
     user = relationship("User", back_populates="sessions")
 
 
-# 11. Notifications Table
-class Notification(Base):
-    __tablename__ = "notifications"
+class WorkspaceRole(str, enum.Enum):
+    OWNER = "OWNER"
+    ADMIN = "ADMIN"
+    MEMBER = "MEMBER"
+    VIEWER = "VIEWER"
+
+
+class TeamRole(str, enum.Enum):
+    LEAD = "LEAD"
+    MEMBER = "MEMBER"
+    VIEWER = "VIEWER"
+
+
+class InviteStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    EXPIRED = "EXPIRED"
+    REVOKED = "REVOKED"
+
+
+# 12. Workspace Table (Top-level Multi-tenant Isolation Container)
+class Workspace(Base):
+    __tablename__ = "workspaces"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
-    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    title = Column(String(255), nullable=False)
-    message = Column(String(1000), nullable=False)
-    type = Column(SQLEnum(NotificationType), default=NotificationType.INFO, nullable=False)
-    is_read = Column(Boolean, default=False, nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    slug = Column(String(100), unique=True, index=True, nullable=False)
+    owner_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    description = Column(String(512), nullable=True)
     created_at = Column(DateTime(timezone=True), default=current_utc, nullable=False)
     updated_at = Column(DateTime(timezone=True), default=current_utc, onupdate=current_utc, nullable=False)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
-    user = relationship("User", back_populates="notifications")
+    owner = relationship("User", foreign_keys=[owner_id])
+    members = relationship("WorkspaceMember", back_populates="workspace", cascade="all, delete-orphan")
+    teams = relationship("Team", back_populates="workspace", cascade="all, delete-orphan")
+    invites = relationship("Invite", back_populates="workspace", cascade="all, delete-orphan")
+    projects = relationship("Project", back_populates="workspace", cascade="all, delete-orphan")
+
+
+# 13. Workspace Member Table (RBAC Roles for Workspaces)
+class WorkspaceMember(Base):
+    __tablename__ = "workspace_members"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(SQLEnum(WorkspaceRole), default=WorkspaceRole.MEMBER, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=current_utc, nullable=False)
+
+    workspace = relationship("Workspace", back_populates="members")
+    user = relationship("User")
+
+    __table_args__ = (
+        Index("idx_workspace_user_unique", "workspace_id", "user_id", unique=True),
+    )
+
+
+# 14. Team Table
+class Team(Base):
+    __tablename__ = "teams"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(255), nullable=False)
+    description = Column(String(512), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=current_utc, nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=current_utc, onupdate=current_utc, nullable=False)
+
+    workspace = relationship("Workspace", back_populates="teams")
+    members = relationship("TeamMember", back_populates="team", cascade="all, delete-orphan")
+
+
+# 15. Team Member Table
+class TeamMember(Base):
+    __tablename__ = "team_members"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    team_id = Column(String(36), ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    role = Column(SQLEnum(TeamRole), default=TeamRole.MEMBER, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=current_utc, nullable=False)
+
+    team = relationship("Team", back_populates="members")
+    user = relationship("User")
+
+    __table_args__ = (
+        Index("idx_team_user_unique", "team_id", "user_id", unique=True),
+    )
+
+
+# 16. Invite Table (Team & Workspace Member Invites)
+class Invite(Base):
+    __tablename__ = "invites"
+
+    id = Column(String(36), primary_key=True, default=generate_uuid)
+    workspace_id = Column(String(36), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    role = Column(SQLEnum(WorkspaceRole), default=WorkspaceRole.MEMBER, nullable=False)
+    invite_code = Column(String(64), unique=True, index=True, nullable=False)
+    status = Column(SQLEnum(InviteStatus), default=InviteStatus.PENDING, nullable=False)
+    invited_by_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=current_utc, nullable=False)
+
+    workspace = relationship("Workspace", back_populates="invites")
+    invited_by = relationship("User")
+
