@@ -31,11 +31,28 @@ async def get_dataset(
     return await service.get_dataset(dataset_id)
 
 
-@router.post("/preprocess")
-async def preprocess_dataset(
-    req: PreprocessConfigRequest,
+from app.schemas import DatasetResponse, PreprocessConfigRequest, DatasetReviewRequest, DatasetReviewResponse
+
+
+@router.post("/{dataset_id}/review", response_model=DatasetReviewResponse)
+async def review_dataset(
+    dataset_id: str,
+    req: DatasetReviewRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
+    """
+    Performs comprehensive Dataset Reviewer audit acting as a Senior Data Scientist:
+    - Missing Values
+    - Duplicates
+    - Data Leakage
+    - Outliers
+    - Imbalance
+    - Correlation
+    - Target Validation
+    - Data Quality Score (0-100)
+    - AI Senior Data Scientist Recommendation
+    """
     service = DatasetService(db)
-    return await service.preprocess_dataset(req)
+    return await service.review_dataset(dataset_id, target_column=req.target_column)
+

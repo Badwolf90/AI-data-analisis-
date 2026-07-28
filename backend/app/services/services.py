@@ -238,6 +238,23 @@ class DatasetService:
             raise HTTPException(status_code=404, detail="Dataset not found")
         return dataset
 
+    async def review_dataset(self, dataset_id: str, target_column: Optional[str] = None):
+        dataset = await self.get_dataset(dataset_id)
+        file_path = dataset.file_path
+
+        try:
+            if file_path.endswith('.csv'):
+                df = pd.read_csv(file_path)
+            elif file_path.endswith('.parquet'):
+                df = pd.read_parquet(file_path)
+            else:
+                df = pd.read_excel(file_path)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error loading dataset for audit: {str(e)}")
+
+        return DatasetReviewerEngine.audit_dataset(df, target_column=target_column)
+
+
     async def preprocess_dataset(self, req: PreprocessConfigRequest):
         dataset = await self.get_dataset(req.dataset_id)
         df = pd.read_csv(dataset.file_path)
