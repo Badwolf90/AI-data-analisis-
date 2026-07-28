@@ -223,124 +223,96 @@ class DatasetService:
         }
 
 
+from app.automl_engine.engine import AutoMLEngine
+
+
 class AutoMLService:
-    def __init__(self, db: AsyncSession):
+    """
+    Application Service for AutoML Orchestration.
+    Follows Clean Architecture & SOLID (SRP/DIP): Delegates domain ML execution 
+    to AutoMLEngine while handling transaction lifecycle and repository persistence.
+    """
+    def __init__(self, db: AsyncSession, engine_cls=None):
         self.exp_repo = ExperimentRepository(db)
         self.model_repo = ModelRepository(db)
         self.dataset_repo = DatasetRepository(db)
+        self.engine_cls = engine_cls or AutoMLEngine
 
     async def run_automl(self, req: AutoMLStartRequest) -> Any:
         dataset = await self.dataset_repo.get_by_id(req.dataset_id)
         if not dataset:
-            raise HTTPException(status_code=404, detail="Dataset not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, 
+                detail="Dataset not found."
+            )
 
-        # Create Experiment Entry
+        # 1. Create Initial Experiment Entry with RUNNING status
         exp = await self.exp_repo.create({
             "dataset_id": req.dataset_id,
             "target_column": req.target_column,
             "task_type": req.task_type,
             "status": ExperimentStatus.RUNNING,
-            "time_budget_seconds": req.time_budget_seconds
+            "time_budget_seconds": req.time_budget_seconds or 300
         })
 
         try:
-            df = pd.read_csv(dataset.file_path)
+            # 2. Ingest Dataset
+            if not os.path.exists(dataset.file_path):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Dataset file missing on server disk."
+                )
+
+            if dataset.file_path.endswith('.parquet'):
+                df = pd.read_parquet(dataset.file_path)
+            elif dataset.file_path.endswith('.xlsx'):
+                df = pd.read_excel(dataset.file_path)
+            else:
+                df = pd.read_csv(dataset.file_path)
+
             if req.target_column not in df.columns:
-                raise ValueError(f"Target column '{req.target_column}' not found in dataset.")
+                raise ValueError(f"Target column '{req.target_column}' not found in dataset columns.")
 
-            X = df.drop(columns=[req.target_column])
-            y = df[req.target_column]
+            # 3. Instantiate Domain AutoML Engine via Dependency Injection
+            engine = self.engine_cls(experiment_id=exp.id)
+            automl_report = engine.run_full_automl(
+                df=df,
+                target_column=req.target_column,
+                n_trials_per_model=3
+            )
 
-            # Simple automatic preprocessing for AutoML
-            num_cols = X.select_dtypes(include=[np.number]).columns
-            cat_cols = X.select_dtypes(exclude=[np.number]).columns
-
-            if len(num_cols) > 0:
-                imp = SimpleImputer(strategy="median")
-                X[num_cols] = imp.fit_transform(X[num_cols])
-            if len(cat_cols) > 0:
-                for col in cat_cols:
-                    le = LabelEncoder()
-                    X[col] = le.fit_transform(X[col].astype(str))
-
-            if req.task_type == ProblemType.CLASSIFICATION and y.dtype == object:
-                le_target = LabelEncoder()
-                y = le_target.fit_transform(y.astype(str))
-
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-
-            models_to_train = []
-
-            # 1. Random Forest Training & Tuning
-            rf_model = RandomForestClassifier(n_estimators=100, random_state=42) if req.task_type == ProblemType.CLASSIFICATION else RandomForestRegressor(n_estimators=100, random_state=42)
-            rf_model.fit(X_train, y_train)
-            rf_preds = rf_model.predict(X_test)
-            
-            if req.task_type == ProblemType.CLASSIFICATION:
-                rf_acc = float(accuracy_score(y_test, rf_preds))
-                rf_f1 = float(f1_score(y_test, rf_preds, average="weighted"))
-                rf_metrics = {"accuracy": rf_acc, "f1_score": rf_f1}
-                primary_score = rf_acc
-            else:
-                rf_mse = float(mean_squared_error(y_test, rf_preds))
-                rf_r2 = float(r2_score(y_test, rf_preds))
-                rf_metrics = {"mse": rf_mse, "r2_score": rf_r2}
-                primary_score = rf_r2
-
-            rf_artifact = os.path.join(settings.MODEL_DIR, f"{exp.id}_RandomForest.joblib")
-            joblib.dump(rf_model, rf_artifact)
-            models_to_train.append(("RandomForest", rf_metrics, primary_score, rf_artifact, rf_model))
-
-            # 2. Gradient Boosting Training
-            gb_model = GradientBoostingClassifier(n_estimators=100, random_state=42) if req.task_type == ProblemType.CLASSIFICATION else GradientBoostingRegressor(n_estimators=100, random_state=42)
-            gb_model.fit(X_train, y_train)
-            gb_preds = gb_model.predict(X_test)
-
-            if req.task_type == ProblemType.CLASSIFICATION:
-                gb_acc = float(accuracy_score(y_test, gb_preds))
-                gb_f1 = float(f1_score(y_test, gb_preds, average="weighted"))
-                gb_metrics = {"accuracy": gb_acc, "f1_score": gb_f1}
-                gb_score = gb_acc
-            else:
-                gb_mse = float(mean_squared_error(y_test, gb_preds))
-                gb_r2 = float(r2_score(y_test, gb_preds))
-                gb_metrics = {"mse": gb_mse, "r2_score": gb_score}
-                gb_score = gb_r2
-
-            gb_artifact = os.path.join(settings.MODEL_DIR, f"{exp.id}_GradientBoosting.joblib")
-            joblib.dump(gb_model, gb_artifact)
-            models_to_train.append(("GradientBoosting", gb_metrics, gb_score, gb_artifact, gb_model))
-
-            # Find best model
-            best_tuple = max(models_to_train, key=lambda item: item[2])
-
-            # Save models to database
-            for algo, metrics, score, artifact, model_obj in models_to_train:
-                is_best = (algo == best_tuple[0])
-                
-                # Calculate simple feature importance summary for SHAP
-                importances = getattr(model_obj, "feature_importances_", None)
-                shap_summary = {}
-                if importances is not None:
-                    shap_summary = {col: float(imp) for col, imp in zip(X.columns, importances)}
+            # 4. Map Engine Leaderboard Entries to Model Database Records
+            leaderboard = automl_report.get("leaderboard", [])
+            for item in leaderboard:
+                algo_name = item.get("algorithm", "UnknownAlgorithm")
+                metrics = item.get("metrics", {})
+                is_best = item.get("is_best", False)
+                artifact_path = item.get("artifact_path", "")
+                hyperparams = item.get("hyperparameters", {})
+                shap_summary = item.get("shap_summary", {})
 
                 await self.model_repo.create({
                     "experiment_id": exp.id,
-                    "algorithm": algo,
-                    "hyperparameters": {"n_estimators": 100},
+                    "algorithm": algo_name,
+                    "hyperparameters": hyperparams,
                     "metrics": metrics,
-                    "artifact_path": artifact,
+                    "artifact_path": artifact_path,
                     "is_best_model": is_best,
                     "shap_summary": shap_summary
                 })
 
+            # 5. Transition Experiment Status to COMPLETED
             await self.exp_repo.update(exp, {"status": ExperimentStatus.COMPLETED})
             return await self.exp_repo.get_with_models(exp.id)
 
         except Exception as e:
-            logger.error(f"AutoML Training Error: {str(e)}")
+            logger.error(f"AutoML Training Error for Experiment {exp.id}: {str(e)}")
             await self.exp_repo.update(exp, {"status": ExperimentStatus.FAILED})
-            raise HTTPException(status_code=500, detail=f"AutoML failed: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"AutoML execution failed: {str(e)}"
+            )
+
 
 
 class XAIService:

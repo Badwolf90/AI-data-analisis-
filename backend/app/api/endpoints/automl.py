@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.models import User
@@ -10,13 +11,24 @@ from app.repositories import ExperimentRepository
 router = APIRouter()
 
 
-@router.post("/start", response_model=ExperimentResponse)
+def get_automl_service(db: AsyncSession = Depends(get_db)) -> AutoMLService:
+    return AutoMLService(db)
+
+
+def get_experiment_repository(db: AsyncSession = Depends(get_db)) -> ExperimentRepository:
+    return ExperimentRepository(db)
+
+
+@router.post("/start", response_model=ExperimentResponse, status_code=status.HTTP_200_OK)
 async def start_automl(
     req: AutoMLStartRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    service: AutoMLService = Depends(get_automl_service)
 ):
-    service = AutoMLService(db)
+    """
+    Triggers an automated Machine Learning pipeline for dataset cleaning, 
+    encoding, scaling, model optimization (Optuna), evaluation, and SHAP explainability.
+    """
     return await service.run_automl(req)
 
 
@@ -24,7 +36,10 @@ async def start_automl(
 async def get_experiment_status(
     experiment_id: str,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    repo: ExperimentRepository = Depends(get_experiment_repository)
 ):
-    repo = ExperimentRepository(db)
+    """
+    Retrieves the status, metrics, and trained model leaderboard for a given experiment ID.
+    """
     return await repo.get_with_models(experiment_id)
+
